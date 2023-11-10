@@ -8,7 +8,6 @@ import re
 from pc_keeper.models import Pc
 
 import requests
-import requests
 
 
 class PcKeeperFilter(django_filters.FilterSet):
@@ -132,37 +131,42 @@ class PcKeeperViewSet(
         pc_list = []
         for pc_object in pc_objects:
             try:
-                response = requests.get(url=f'{pc_object.url}/sdapi/v1/progress', timeout=10).json()
-                
-                progress = float(response['progress'])
+                response = requests.get(url=f'{pc_object.url}/sdapi/v1/progress', timeout=5).json()
 
-                if progress > 0:
-                    pc_info_dict = {
-                        'id' : pc_object.id,
-                        'status' : False,
-                        'progress' : progress,
-                        'url' : pc_object.url
-                    }
-                    pc_list.append(pc_info_dict)
-                else:
-                    pc_info_dict = {
-                        'id' : pc_object.id,
-                        'status' : True,
-                        'progress' : progress,
-                        'url' : pc_object.url
-                    }
-                    pc_list.append(pc_info_dict)
-                
-            except requests.exceptions.ReadTimeout:
+                progress = float(response['progress'])
+            
+            except Exception as e:
+                print(e)
+                progress = 404
+            
+            if progress == 404:
                 pc_info_dict = {
                         'id' : pc_object.id,
                         'status' : False,
-                        'progress' : 100,
+                        'progress' : 0.99,
                         'url' : pc_object.url
                     }
                 pc_list.append(pc_info_dict)
+           
+            elif progress > 0:
+                pc_info_dict = {
+                    'id' : pc_object.id,
+                    'status' : False,
+                    'progress' : progress,
+                    'url' : pc_object.url
+                }
+                pc_list.append(pc_info_dict)
+            
+            
+            else:
+                pc_info_dict = {
+                    'id' : pc_object.id,
+                    'status' : True,
+                    'progress' : progress,
+                    'url' : pc_object.url
+                }
+                pc_list.append(pc_info_dict)
                 
-        
         return Response(pc_list, status=200)
     
 
