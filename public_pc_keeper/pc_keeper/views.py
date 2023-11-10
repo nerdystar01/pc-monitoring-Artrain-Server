@@ -4,7 +4,11 @@ from rest_framework.viewsets import GenericViewSet
 from rest_framework.response import Response
 from rest_framework.decorators import action
 import django_filters
+import re
 from pc_keeper.models import Pc
+
+import requests
+import requests
 
 
 class PcKeeperFilter(django_filters.FilterSet):
@@ -25,7 +29,7 @@ class PcKeeperSerializer(serializers.ModelSerializer):
     seat = serializers.CharField(required = False)
 
     def validate_password(self, value):
-        if not value.isdigit() or len(value) != 4:
+        if not re.match(r'^\d{4}$', value):
             raise serializers.ValidationError("비밀번호는 4자리 숫자여야 합니다.")
         return value
     
@@ -65,14 +69,24 @@ class PcKeeperViewSet(
     @action(methods=["post"], detail=False, url_path='start')
     def start_use_pc(self,request):
         data = request.data
+        serializer = PcKeeperSerializer(data = data)
+
+        if serializer.is_valid():
+            validated_data = serializer.validated_data
+        else:
+            return Response(serializer.errors, status=400)
 
         pc_id = data.get("id")
 
-        try:
-            instance = Pc.objects.get(id = pc_id)
+        # PC 상태확인.
+        instance = Pc.objects.get(id = pc_id)
+        if instance.status == False:
+            raise serializers.ValidationError("이 PC 는 현재 사용중입니다.")
+        
 
-            instance.username = data.get("username")
-            instance.password = data.get("password")
+        try:
+            instance.username = validated_data.get("username")
+            instance.password = validated_data.get("password")
             instance.status = False
             instance.save()
 
@@ -109,3 +123,62 @@ class PcKeeperViewSet(
         except Pc.DoesNotExist:
             raise serializers.ValidationError("없는 PC 번호를 입력받았습니다.")
 
+    @action(methods=['get'], detail=False, url_path='check')
+    def check_use_pc(self, request):
+        
+        pc_objects = Pc.objects.all()
+        print(pc_objects)
+        
+        pc_list = []
+        for pc_object in pc_objects:
+            try:
+                response = requests.get(url=f'{pc_object.url}/sdapi/v1/progress', timeout=10).json()
+                
+                progress = float(response['progress'])
+
+                if progress > 0:
+                    pc_info_dict = {
+                        'id' : pc_object.id,
+                        'status' : False,
+                        'progress' : progress,
+                        'url' : pc_object.url
+                    }
+                    pc_list.append(pc_info_dict)
+                else:
+                    pc_info_dict = {
+                        'id' : pc_object.id,
+                        'status' : True,
+                        'progress' : progress,
+                        'url' : pc_object.url
+                    }
+                    pc_list.append(pc_info_dict)
+                
+            except requests.exceptions.ReadTimeout:
+                pc_info_dict = {
+                        'id' : pc_object.id,
+                        'status' : False,
+                        'progress' : 100,
+                        'url' : pc_object.url
+                    }
+                pc_list.append(pc_info_dict)
+                
+        
+        return Response(pc_list, status=200)
+    
+
+
+    # @action(methods=['get'], detail=False, url_path='check2')
+    # def check_use_pc(self, request):
+        
+    #     pc_pod_dict = {
+    #         'Pod_1' : 'http://10.10.110.168:7840',
+    #         'Pod_2' : 'http://10.10.110.124:8001',
+    #         'Pod_3' : 'http://10.10.110.76:8002',
+    #     }
+        
+    #     responce = requests.get(url='http://10.10.110.168:7840/sdapi/v1/progress', timeout=10).json()
+    #     progress = responce['progress']
+    #     while progress == 0:
+    #         responce_2 = requests.get(url='http://10.10.110.168:7840/sdapi/v1/progress', timeout=10).json()
+    #         print(responce_2['eta_relative'])
+    #         return Response(status=200)
